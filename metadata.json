@@ -1,0 +1,6 @@
+{
+  "name": "مكتبة الوثائق",
+  "description": "تطبيق مكتبي لمسح وأرشفة وقراءة الوثائق والكتب والمجلات العربية دون اتصال بالإنترنت",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
