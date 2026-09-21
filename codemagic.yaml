@@ -1,0 +1,61 @@
+workflows:
+  android-workflow:
+    name: Android Build
+    max_build_duration: 90
+    instance_type: mac_mini_m1
+    environment:
+      java: 21
+      vars:
+        APP_FOLDER: "maktaba"   # غيّر هذا الاسم فقط حسب اسم مجلد كل مشروع جديد
+    scripts:
+      - name: Prepare project files
+        script: |
+          cd $CM_BUILD_DIR/$APP_FOLDER
+
+          # 1. توليد local.properties لو ناقص
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          echo 'API_KEY=""' >> local.properties
+
+          # 2. تثبيت مكونات أندرويد الأساسية
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" > /dev/null 2>&1 || true
+
+          # 3. توليد كيستور تجريبي لو ناقص
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v -keystore debug.keystore -storepass android \
+              -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # 4. توليد ملف .env.example / .env لو ناقص (يمنع فشل قراءة متغيرات البيئة)
+          if [ ! -f .env.example ]; then
+            echo "API_KEY=" > .env.example
+          fi
+          if [ ! -f .env ]; then
+            cp .env.example .env
+          fi
+
+      - name: Detect correct Gradle version and build APK
+        script: |
+          cd $CM_BUILD_DIR/$APP_FOLDER
+
+          # يحاول يقرأ رقم Gradle المطلوب من ملفات المشروع نفسها لو موجودة
+          if [ -f gradle/wrapper/gradle-wrapper.properties ]; then
+            DETECTED=$(grep -oE 'gradle-[0-9]+\.[0-9]+(\.[0-9]+)?' gradle/wrapper/gradle-wrapper.properties | head -1 | sed 's/gradle-//')
+          fi
+          GRADLE_VERSION=${DETECTED:-8.10}
+
+          echo "Using Gradle version: $GRADLE_VERSION"
+          gradle wrapper --gradle-version "$GRADLE_VERSION"
+          chmod +x gradlew
+
+          # يحاول البناء، ولو فشل بسبب نسخة Gradle قديمة يحاول تلقائياً بأحدث نسخة
+          ./gradlew assembleDebug --stacktrace || {
+            echo "Retrying with latest stable Gradle..."
+            gradle wrapper --gradle-version 9.3.1
+            chmod +x gradlew
+            ./gradlew assembleDebug --stacktrace
+          }
+    artifacts:
+      - "**/*.apk"
+      - "**/build/outputs/**/*.apk"
